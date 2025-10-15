@@ -1,45 +1,70 @@
-import React, { useState } from "react";
+import { useEffect, useRef, useState } from 'react';
+import { API_ROUTES } from '../../shared/constants';
 
-export function SearchBox({
-  label,
-  onSelect,
-}: {
+interface SearchBoxProps {
   label: string;
-  onSelect: (coords: { lat: number; lng: number }) => void;
-}) {
-  const [query, setQuery] = useState("");
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
 
-  const handleSearch = async () => {
-    if (!query) return;
-    const res = await fetch(`/api/geo?query=${encodeURIComponent(query)}`);
-    const data = await res.json();
+interface JusoItem {
+  roadAddr: string;
+  jibunAddr: string;
+}
 
-    if (data?.results?.[0]) {
-      const { lat, lng } = data.results[0];
-      onSelect({ lat, lng });
-      alert(`${label} 선택됨: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-    } else {
-      alert("검색 결과 없음");
+export default function SearchBox({ label, value, onChange, placeholder }: SearchBoxProps) {
+  const [suggestions, setSuggestions] = useState<JusoItem[]>([]);
+  const [isFocused, setFocused] = useState(false);
+  const debounceRef = useRef<number>();
+
+  useEffect(() => {
+    if (!value) {
+      setSuggestions([]);
+      return;
     }
-  };
+    window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `${API_ROUTES.GEO}?keyword=${encodeURIComponent(value)}&countPerPage=10`,
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch suggestions');
+        }
+        const payload = await response.json();
+        const results = payload?.results?.juso ?? [];
+        setSuggestions(results);
+      } catch (error) {
+        console.error(error);
+        setSuggestions([]);
+      }
+    }, 250);
+    return () => window.clearTimeout(debounceRef.current);
+  }, [value]);
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <div className="flex">
+      <label>
+        <span style={{ display: 'block', fontWeight: 600, marginBottom: '0.5rem' }}>{label}</span>
         <input
-          className="flex-1 border rounded-l-lg px-3 py-2 outline-none"
-          placeholder="주소를 입력하세요"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          onFocus={() => setFocused(true)}
+          onBlur={() => window.setTimeout(() => setFocused(false), 150)}
         />
-        <button
-          onClick={handleSearch}
-          className="bg-blue-500 text-white px-4 rounded-r-lg hover:bg-blue-600"
-        >
-          검색
-        </button>
-      </div>
+      </label>
+      {isFocused && suggestions.length > 0 && (
+        <ul className="search-suggestions">
+          {suggestions.map((item) => (
+            <li key={`${item.roadAddr}-${item.jibunAddr}`} onMouseDown={() => onChange(item.roadAddr)}>
+              <strong>{item.roadAddr}</strong>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.jibunAddr}</div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

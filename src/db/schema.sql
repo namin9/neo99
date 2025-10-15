@@ -1,0 +1,31 @@
+-- This project uses JSON seed files instead of a relational schema.
+-- The SQL file is provided for reference/documentation only.
+-- If you migrate to a relational database, start with the following
+-- conceptual tables:
+--
+-- CREATE TABLE terminals (
+--   id TEXT PRIMARY KEY,
+--   name TEXT NOT NULL,
+--   city TEXT,
+--   lat REAL,
+--   lng REAL
+-- );
+--
+-- CREATE TABLE routes (
+--   id TEXT PRIMARY KEY,
+--   origin_id TEXT,
+--   destination_id TEXT,
+--   duration_min INTEGER,
+--   distance_km REAL,
+--   price_adult INTEGER,
+--   price_child INTEGER,
+--   price_youth INTEGER,
+--   company TEXT,
+--   grade TEXT
+-- );
+--
+-- CREATE TABLE schedules (
+--   id TEXT PRIMARY KEY,
+--   route_id TEXT REFERENCES routes(id),
+--   departure_time TEXT
+-- );
