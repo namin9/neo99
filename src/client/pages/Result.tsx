@@ -1,30 +1,139 @@
-import React, { useEffect, useState } from "react";
-import { RouteList } from "../components/RouteList";
-import { MapView } from "../components/MapView";
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import MapView from '../components/MapView';
+import RouteList from '../components/RouteList';
+import Timeline from '../components/Timeline';
+import { API_ROUTES } from '../../shared/constants';
+import type { EtaResponse } from '../../shared/types';
+
+interface DirectionPath {
+  path: Array<[number, number]>;
+}
+
+interface DirectionResponse {
+  route: {
+    trafast?: Array<{
+      summary: { distance: number; duration: number };
+      path: Array<[number, number]>;
+    }>;
+  };
+}
+
+function useQuery() {
+  const location = useLocation();
+  return useMemo(() => new URLSearchParams(location.search), [location.search]);
+}
 
 export default function Result() {
-  const [result, setResult] = useState<any>(null);
+  const query = useQuery();
+  const origin = query.get('origin');
+  const destination = query.get('destination');
+  const navigate = useNavigate();
+  const [summary, setSummary] = useState<EtaResponse | null>(null);
+  const [path, setPath] = useState<DirectionPath | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const data = localStorage.getItem("eta_result");
-    if (data) setResult(JSON.parse(data));
-  }, []);
+    if (!origin || !destination) {
+      navigate('/', { replace: true });
+      return;
+    }
+    setLoading(true);
+    const controller = new AbortController();
 
-  if (!result) return <div className="p-6 text-center">결과 데이터를 불러오는 중...</div>;
+    fetch(`${API_ROUTES.ETA}?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error ?? '경로 정보를 찾을 수 없습니다.');
+        }
+        setSummary(payload);
+        return payload as EtaResponse;
+      })
+      .then(async (payload) => {
+        if (!payload.route.origin_lat || !payload.route.origin_lng || !payload.route.destination_lat || !payload.route.destination_lng) {
+          return;
+        }
+        try {
+          const start = `${payload.route.origin_lng},${payload.route.origin_lat}`;
+          const goal = `${payload.route.destination_lng},${payload.route.destination_lat}`;
+          const response = await fetch(`${API_ROUTES.DIRECTION}?start=${encodeURIComponent(start)}&goal=${encodeURIComponent(goal)}`);
+          if (!response.ok) {
+            return;
+          }
+          const data: DirectionResponse = await response.json();
+          const trafast = data.route.trafast?.[0];
+          if (trafast) {
+            setPath({ path: trafast.path.map(([lng, lat]) => [lat, lng]) as Array<[number, number]> });
+          }
+        } catch (directionError) {
+          console.error('Failed to load direction data', directionError);
+        }
+      })
+      .catch((caughtError) => {
+        console.error(caughtError);
+        setError(caughtError instanceof Error ? caughtError.message : '알 수 없는 오류가 발생했습니다.');
+      })
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, [origin, destination, navigate]);
+
+  const timelineEvents = useMemo(() => {
+    if (!summary) {
+      return [];
+    }
+    return summary.nextDepartures.map(({ departureDate, arrivalDate }) => ({
+      timestamp: departureDate,
+      label: `출발 • ${summary.route.origin_name}`,
+      description: `도착 예정 ${new Date(arrivalDate).toLocaleString()} (${summary.route.destination_name})`,
+    }));
+  }, [summary]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="text-2xl font-semibold mb-4 text-blue-600">📍 경로 결과</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <MapView route={result.best} />
-        <RouteList result={result} />
-      </div>
-      <a
-        href="/"
-        className="inline-block mt-8 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
-      >
-        다시 계산하기
-      </a>
+    <div>
+      {loading && <p>경로를 계산하고 있습니다…</p>}
+      {error && <p style={{ color: '#ef4444' }}>{error}</p>}
+      <RouteList data={summary} />
+      <section className="card">
+        <h2>경로 타임라인</h2>
+        <Timeline events={timelineEvents} />
+      </section>
+      <section className="card">
+        <h2>지도 보기</h2>
+        <MapView
+          origin={
+            summary?.route.origin_lat && summary?.route.origin_lng
+              ? {
+                  lat: summary.route.origin_lat,
+                  lng: summary.route.origin_lng,
+                  name: summary.route.origin_name,
+                }
+              : null
+          }
+          destination={
+            summary?.route.destination_lat && summary?.route.destination_lng
+              ? {
+                  lat: summary.route.destination_lat,
+                  lng: summary.route.destination_lng,
+                  name: summary.route.destination_name,
+                }
+              : null
+          }
+          path={
+            path?.path.map(([lat, lng]) => ({ lat, lng })) ??
+            (summary
+              ? [
+                  { lat: summary.route.origin_lat ?? 37.5665, lng: summary.route.origin_lng ?? 126.978 },
+                  { lat: summary.route.destination_lat ?? 37.498, lng: summary.route.destination_lng ?? 127.027 },
+                ]
+              : undefined)
+          }
+        />
+      </section>
     </div>
   );
 }

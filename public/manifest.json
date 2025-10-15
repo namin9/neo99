@@ -1,0 +1,16 @@
+{
+  "name": "NeoQik Reverse ETA",
+  "short_name": "NeoQik",
+  "description": "Reverse ETA planner for Korean express buses.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0ea5e9",
+  "theme_color": "#0ea5e9",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

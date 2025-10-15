@@ -1,49 +1,38 @@
-/**
- * NeoQik Reverse ETA - 행안부 JUSO API Proxy
- * --------------------------------------------------
- * GET /api/geo?query=서울 강남구 테헤란로
- *
- * 내부적으로:
- *   https://business.juso.go.kr/addrlink/openApi/searchApi.do
- *   + confmKey=${API_KEY}&currentPage=1&countPerPage=10&keyword=${query}
- */
+interface Env {
+  JUSO_API_KEY: string;
+}
 
-export const onRequestGet: PagesFunction = async (context) => {
-  const url = new URL(context.request.url);
-  const query = url.searchParams.get("query");
-  const apiKey = context.env?.JUSO_API_KEY;
+const JUSO_ENDPOINT = 'https://business.juso.go.kr/addrlink/openApi/searchApi.do';
 
-  if (!query) {
-    return new Response(JSON.stringify({ error: "query required" }), { status: 400 });
-  }
-
-  const jusoUrl = `https://business.juso.go.kr/addrlink/openApi/searchApi.do?confmKey=${apiKey}&currentPage=1&countPerPage=5&keyword=${encodeURIComponent(
-    query
-  )}&resultType=json`;
-
-  try {
-    const res = await fetch(jusoUrl);
-    const data = await res.json();
-
-    if (!data.results?.juso?.length) {
-      return new Response(JSON.stringify({ results: [] }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // 📍 변환 결과: 도로명 + 좌표 (lon/lat)
-    const results = data.results.juso.map((j: any) => ({
-      roadAddr: j.roadAddr,
-      jibunAddr: j.jibunAddr,
-      zipNo: j.zipNo,
-      lat: parseFloat(j.entX || j.lat || 0),
-      lng: parseFloat(j.entY || j.lon || 0),
-    }));
-
-    return new Response(JSON.stringify({ results }, null, 2), {
-      headers: { "Content-Type": "application/json" },
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+  const url = new URL(request.url);
+  const keyword = url.searchParams.get('keyword');
+  if (!keyword) {
+    return new Response(JSON.stringify({ error: 'keyword query parameter is required' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
+
+  const payload = new URLSearchParams({
+    confmKey: env.JUSO_API_KEY,
+    currentPage: url.searchParams.get('currentPage') ?? '1',
+    countPerPage: url.searchParams.get('countPerPage') ?? '5',
+    keyword,
+    resultType: 'json',
+  });
+
+  const upstreamResponse = await fetch(`${JUSO_ENDPOINT}?${payload.toString()}`);
+
+  if (!upstreamResponse.ok) {
+    return new Response(JSON.stringify({ error: 'Failed to contact JUSO API' }), {
+      status: upstreamResponse.status,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  const data = await upstreamResponse.text();
+  return new Response(data, {
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 };
