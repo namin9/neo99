@@ -1,0 +1,8 @@
+name = "neoqik-reverse-eta"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[vars]
+JUSO_API_KEY = ""
+NAVER_CLIENT_ID = ""
+NAVER_CLIENT_SECRET = ""

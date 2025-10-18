@@ -1,29 +1,43 @@
-import React from "react";
+import type { EtaResponse } from '../../shared/types';
+import { formatMinutes } from '../../shared/utils';
 
-export function RouteList({ result }: { result: any }) {
-  const { best, alternatives } = result;
-  if (!best) return <p>적절한 노선을 찾지 못했습니다.</p>;
+interface RouteListProps {
+  data: EtaResponse | null;
+}
+
+export default function RouteList({ data }: RouteListProps) {
+  if (!data) {
+    return (
+      <div className="card">
+        <p>검색 결과가 없습니다. 출발지와 도착지를 다시 확인해주세요.</p>
+      </div>
+    );
+  }
+
+  const { route, distanceKm, totalDurationMinutes, nextDepartures } = data;
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow-md">
-      <h2 className="text-lg font-bold mb-2">🚀 가장 빠른 도착 경로</h2>
-      <div className="border p-3 rounded-lg bg-blue-50 mb-4">
-        <p>노선: {best.origin} → {best.destination}</p>
-        <p>운수회사: {best.company} / 등급: {best.grade}</p>
-        <p>총 소요시간: 약 {Math.round(best.total_time_min)}분</p>
-        <p>출발 예정: {best.next_departure}</p>
-      </div>
-
-      <h3 className="text-md font-semibold mb-1">대안 경로</h3>
-      <ul className="space-y-2">
-        {alternatives.map((alt: any, i: number) => (
-          <li key={i} className="border p-3 rounded-lg">
-            <p>{alt.origin} → {alt.destination}</p>
-            <p>{alt.company} / {alt.grade}</p>
-            <p>약 {Math.round(alt.total_time_min)}분</p>
-          </li>
+    <div className="card">
+      <h2>
+        {route.origin_name} → {route.destination_name}
+      </h2>
+      <p>
+        {route.company} · {route.grade}
+      </p>
+      <p>
+        이동거리 {distanceKm.toFixed(1)}km · 예상 소요시간 {formatMinutes(totalDurationMinutes)}
+      </p>
+      <div className="timeline" style={{ marginTop: '1.5rem' }}>
+        {nextDepartures.map(({ schedule, departureDate, arrivalDate }) => (
+          <div className="timeline-event" key={schedule.id}>
+            <time>{new Date(departureDate).toLocaleString()}</time>
+            <div>
+              도착 {new Date(arrivalDate).toLocaleString()} · 배차 {schedule.departure_time}
+            </div>
+          </div>
         ))}
-      </ul>
+        {nextDepartures.length === 0 && <p>등록된 운행 일정이 없습니다.</p>}
+      </div>
     </div>
   );
 }

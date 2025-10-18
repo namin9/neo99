@@ -1,57 +1,126 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from 'react';
+import { NAVER_MAP_SDK_ENDPOINT } from '../../shared/constants';
 
 declare global {
   interface Window {
-    naver: any;
+    naver?: any;
+    __NAVER_MAP_SDK_PROMISE__?: Promise<void>;
   }
 }
 
-export function MapView({ route }: { route: any }) {
+export interface MapPoint {
+  lat: number;
+  lng: number;
+  name?: string;
+}
+
+interface MapViewProps {
+  origin?: MapPoint | null;
+  destination?: MapPoint | null;
+  path?: Array<{ lat: number; lng: number }>;
+}
+
+async function ensureMapSdk(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (!window.__NAVER_MAP_SDK_PROMISE__) {
+    window.__NAVER_MAP_SDK_PROMISE__ = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = NAVER_MAP_SDK_ENDPOINT;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Naver Map SDK'));
+      document.head.appendChild(script);
+    });
+  }
+  return window.__NAVER_MAP_SDK_PROMISE__;
+}
+
+export default function MapView({ origin, destination, path }: MapViewProps) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<any>();
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any>();
 
   useEffect(() => {
-    if (!route) return;
-
-    // ✅ Naver Maps SDK 동적 로드
-    const existing = document.getElementById("naver-map-sdk");
-    if (!existing) {
-      const script = document.createElement("script");
-      script.id = "naver-map-sdk";
-      script.src = `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${import.meta.env.VITE_NAVER_CLIENT_ID}`;
-      script.async = true;
-      document.head.appendChild(script);
-      script.onload = initMap;
-    } else {
-      initMap();
+    let cancelled = false;
+    if (!mapRef.current) {
+      return;
     }
 
-    function initMap() {
-      if (!window.naver) return;
-      const { origin_lat, origin_lng, destination_lat, destination_lng } = route;
+    ensureMapSdk()
+      .then(() => {
+        if (cancelled || !window.naver) {
+          return;
+        }
+        const naver = window.naver;
+        const center = origin ?? destination ?? { lat: 37.5665, lng: 126.978 }; // Seoul fallback
+        if (!mapInstance.current) {
+          mapInstance.current = new naver.maps.Map(mapRef.current, {
+            center: new naver.maps.LatLng(center.lat, center.lng),
+            zoom: 8,
+          });
+        } else {
+          mapInstance.current.setCenter(new naver.maps.LatLng(center.lat, center.lng));
+        }
 
-      const map = new window.naver.maps.Map(mapRef.current!, {
-        center: new window.naver.maps.LatLng(
-          (origin_lat + destination_lat) / 2,
-          (origin_lng + destination_lng) / 2
-        ),
-        zoom: 8,
+        markersRef.current.forEach((marker) => marker.setMap(null));
+        markersRef.current = [];
+
+        if (origin) {
+          markersRef.current.push(
+            new naver.maps.Marker({
+              position: new naver.maps.LatLng(origin.lat, origin.lng),
+              map: mapInstance.current,
+              title: origin.name ?? '출발지',
+              icon: {
+                content:
+                  '<div style="background:#0ea5e9;color:white;padding:6px 10px;border-radius:12px;font-weight:600">출발</div>',
+              },
+            }),
+          );
+        }
+
+        if (destination) {
+          markersRef.current.push(
+            new naver.maps.Marker({
+              position: new naver.maps.LatLng(destination.lat, destination.lng),
+              map: mapInstance.current,
+              title: destination.name ?? '도착지',
+              icon: {
+                content:
+                  '<div style="background:#22c55e;color:white;padding:6px 10px;border-radius:12px;font-weight:600">도착</div>',
+              },
+            }),
+          );
+        }
+
+        if (path && path.length > 1) {
+          const linePath = path.map((coord) => new naver.maps.LatLng(coord.lat, coord.lng));
+          if (polylineRef.current) {
+            polylineRef.current.setMap(null);
+          }
+          polylineRef.current = new naver.maps.Polyline({
+            map: mapInstance.current,
+            path: linePath,
+            strokeColor: '#0ea5e9',
+            strokeOpacity: 0.8,
+            strokeWeight: 5,
+          });
+          const bounds = new naver.maps.LatLngBounds(linePath[0], linePath[0]);
+          linePath.forEach((latLng: any) => bounds.extend(latLng));
+          mapInstance.current.fitBounds(bounds);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
       });
 
-      const origin = new window.naver.maps.LatLng(origin_lat, origin_lng);
-      const destination = new window.naver.maps.LatLng(destination_lat, destination_lng);
+    return () => {
+      cancelled = true;
+    };
+  }, [origin, destination, path]);
 
-      new window.naver.maps.Marker({ position: origin, map, title: route.origin });
-      new window.naver.maps.Marker({ position: destination, map, title: route.destination });
-
-      // 단순 직선 연결 (Directions API는 아래 참고)
-      new window.naver.maps.Polyline({
-        map,
-        path: [origin, destination],
-        strokeColor: "#0070f3",
-        strokeWeight: 4,
-      });
-    }
-  }, [route]);
-
-  return <div ref={mapRef} className="w-full h-[400px] rounded-xl shadow" />;
+  return <div className="map-container" ref={mapRef} />;
 }
