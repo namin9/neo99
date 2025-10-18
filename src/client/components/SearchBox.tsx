@@ -23,7 +23,6 @@ export default function SearchBox({ label, value, onChange, placeholder }: Searc
       setSuggestions([]);
       return;
     }
-
     window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
       try {
@@ -31,25 +30,24 @@ export default function SearchBox({ label, value, onChange, placeholder }: Searc
           `${API_ROUTES.GEO}?keyword=${encodeURIComponent(value)}&countPerPage=10`,
         );
 
-        const text = await response.text();
-
-        // 🧩 HTML 응답이면 즉시 중단
-        if (text.trim().startsWith('<')) {
-          console.warn('JUSO API returned HTML, not JSON:', text.slice(0, 100));
-          setSuggestions([]);
-          return;
+        if (!response.ok) {
+          throw new Error(`Failed to fetch suggestions: ${response.status}`);
         }
 
-        const payload = JSON.parse(text);
-        const results = payload?.results?.juso ?? [];
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('application/json')) {
+          const preview = await response.text();
+          throw new Error(`Unexpected content-type: ${contentType} -> ${preview.slice(0, 120)}`);
+        }
 
+        const payload = await response.json();
+        const results = payload?.results?.juso ?? [];
         setSuggestions(results);
       } catch (error) {
-        console.error('JUSO API fetch error:', error);
+        console.error('주소 검색에 실패했습니다.', error);
         setSuggestions([]);
       }
     }, 250);
-
     return () => window.clearTimeout(debounceRef.current);
   }, [value]);
 
@@ -68,14 +66,9 @@ export default function SearchBox({ label, value, onChange, placeholder }: Searc
       {isFocused && suggestions.length > 0 && (
         <ul className="search-suggestions">
           {suggestions.map((item) => (
-            <li
-              key={`${item.roadAddr}-${item.jibunAddr}`}
-              onMouseDown={() => onChange(item.roadAddr || item.jibunAddr)}
-            >
-              <strong>{item.roadAddr || item.jibunAddr}</strong>
-              {item.jibunAddr && (
-                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.jibunAddr}</div>
-              )}
+            <li key={`${item.roadAddr}-${item.jibunAddr}`} onMouseDown={() => onChange(item.roadAddr)}>
+              <strong>{item.roadAddr}</strong>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.jibunAddr}</div>
             </li>
           ))}
         </ul>

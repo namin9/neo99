@@ -6,13 +6,10 @@ const JUSO_ENDPOINT = 'https://business.juso.go.kr/addrlink/openApi/searchApi.do
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const url = new URL(request.url);
-  const keyword = url.searchParams.get('keyword') ?? url.searchParams.get('query');
-  let data = await upstreamResponse.text();
-  try {
-    JSON.parse(data);
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON returned by JUSO API" }), {
-      status: 502,
+  const keyword = url.searchParams.get('keyword');
+  if (!keyword) {
+    return new Response(JSON.stringify({ error: 'keyword query parameter is required' }), {
+      status: 400,
       headers: { 'content-type': 'application/json; charset=utf-8' },
     });
   }
